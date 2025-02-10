@@ -13,21 +13,12 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class RedisConfiguration {
     @Bean
     public RedisTemplate redisTemplate(RedisConnectionFactory redisConnectionFactory) {
-        log.info("开始创建redis模板对象");
+        log.info("开始创建redis模板对象...");
         RedisTemplate redisTemplate = new RedisTemplate();
-        // 设置redis的连接工厂对象
+        //设置redis的连接工厂对象
         redisTemplate.setConnectionFactory(redisConnectionFactory);
-        // 设置redis key的序列化器
+        //设置redis key的序列化器
         redisTemplate.setKeySerializer(new StringRedisSerializer());
-        // 设置redis value的序列化器
-        redisTemplate.setValueSerializer(new GenericJackson2JsonRedisSerializer());
-        // 设置hash key的序列化器
-        redisTemplate.setHashKeySerializer(new StringRedisSerializer());
-        // 设置hash value的序列化器
-        redisTemplate.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
-
-        // 初始化后执行
-        redisTemplate.afterPropertiesSet();
         return redisTemplate;
     }
 }
