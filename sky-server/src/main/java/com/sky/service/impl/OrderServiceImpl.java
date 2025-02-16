@@ -1,5 +1,6 @@
 package com.sky.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
@@ -153,9 +154,9 @@ public class OrderServiceImpl implements OrderService {
         orderMapper.update(orders);
 
         Map map = new HashMap();
-        map.put("type",1);
-        map.put("orderId",ordersDB.getId());
-        map.put("content","订单号："+ordersDB.getNumber());
+        map.put("type", 1);
+        map.put("orderId", ordersDB.getId());
+        map.put("content", "订单号：" + ordersDB.getNumber());
 
         String json = JSONObject.toJSONString(map);
         webSocketServer.sendToAllClient(json);
@@ -282,6 +283,7 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 订单统计
+     *
      * @return
      */
     @Override
@@ -301,6 +303,7 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 接单
+     *
      * @param ordersConfirmDTO
      */
     @Override
@@ -314,6 +317,7 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 拒单
+     *
      * @param ordersRejectionDTO
      */
     @Override
@@ -341,6 +345,7 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 管理员取消订单
+     *
      * @param ordersRejectionDTO
      */
     @Override
@@ -392,6 +397,22 @@ public class OrderServiceImpl implements OrderService {
         orders.setDeliveryTime(LocalDateTime.now());
 
         orderMapper.update(orders);
+    }
+
+    // 催单
+    @Override
+    public void reminder(Long id) {
+        Orders ordersDB = orderMapper.getById(id);
+        if (ordersDB != null) {
+            Map map = new HashMap();
+            map.put("type", 2);
+            map.put("orderId", ordersDB.getId());
+            map.put("content", "订单号：" + ordersDB.getNumber());
+
+            webSocketServer.sendToAllClient(JSONObject.toJSONString(map));
+        } else {
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
     }
 
     // 查询订单详情
