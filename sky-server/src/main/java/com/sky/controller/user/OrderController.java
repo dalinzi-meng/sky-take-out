@@ -8,10 +8,15 @@ import com.sky.service.OrderService;
 import com.sky.vo.OrderPaymentVO;
 import com.sky.vo.OrderSubmitVO;
 import com.sky.vo.OrderVO;
+import com.sky.vo.TurnoverReportVO;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @RestController("UserOrderController")
 @RequestMapping("/user/order")
@@ -45,62 +50,67 @@ public class OrderController {
 
     /**
      * 历史订单
+     *
      * @param page
      * @param pageSize
      * @param status
      * @return
      */
     @GetMapping("/historyOrders")
-    public Result<PageResult> getHistoryOrders(Integer page, Integer pageSize, Integer status){
+    public Result<PageResult> getHistoryOrders(Integer page, Integer pageSize, Integer status) {
         PageResult pageResult = orderService.getHistoryOrders(page, pageSize, status);
         return Result.success(pageResult);
     }
 
     /**
      * 订单详情
+     *
      * @param id
      * @return
      */
     @GetMapping("/orderDetail/{id}")
-    public Result<OrderVO> getOrderDetail(@PathVariable Long id){
-        log.info("查询订单详情:{}",id);
+    public Result<OrderVO> getOrderDetail(@PathVariable Long id) {
+        log.info("查询订单详情:{}", id);
         OrderVO orderVO = orderService.getOrderDetail(id);
         return Result.success(orderVO);
     }
 
     /**
      * 取消订单
+     *
      * @param id
      * @return
      * @throws Exception
      */
     @PutMapping("/cancel/{id}")
-    public Result cancel(@PathVariable Long id) throws Exception{
-        log.info("取消订单:{}",id);
+    public Result cancel(@PathVariable Long id) throws Exception {
+        log.info("取消订单:{}", id);
         orderService.cancel(id);
         return Result.success();
     }
 
     /**
      * 再来一单
+     *
      * @param id
      * @return
      */
     @PostMapping("/repetition/{id}")
-    public Result repetition(@PathVariable Long id){
-        log.info("再来一单:{}",id);
+    public Result repetition(@PathVariable Long id) {
+        log.info("再来一单:{}", id);
         orderService.repetition(id);
         return Result.success();
     }
 
     /**
      * 催单
+     *
      * @param id
      * @return
      */
     @GetMapping("/reminder/{id}")
-    public Result reminder(@PathVariable Long id){
-        log.info("催单:{}",id);
+    public Result reminder(@PathVariable Long id) {
+        log.info("催单:{}", id);
         orderService.reminder(id);
         return Result.success();
     }

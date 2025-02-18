@@ -1,6 +1,5 @@
 package com.sky.service.impl;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
@@ -14,22 +13,30 @@ import com.sky.exception.ShoppingCartBusinessException;
 import com.sky.mapper.*;
 import com.sky.result.PageResult;
 import com.sky.service.OrderService;
-import com.sky.service.ShoppingCartService;
+import com.sky.service.WorkspaceService;
 import com.sky.utils.WeChatPayUtil;
-import com.sky.vo.OrderPaymentVO;
-import com.sky.vo.OrderStatisticsVO;
-import com.sky.vo.OrderSubmitVO;
-import com.sky.vo.OrderVO;
+import com.sky.vo.*;
 import com.sky.websocket.WebSocketServer;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang.StringUtils;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
+import javax.servlet.ServletOutputStream;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -54,6 +61,8 @@ public class OrderServiceImpl implements OrderService {
     private WeChatPayUtil weChatPayUtil;
     @Autowired
     private WebSocketServer webSocketServer;
+    @Autowired
+    private WorkspaceService workspaceService;
 
     @Override
     @Transactional
@@ -412,6 +421,230 @@ public class OrderServiceImpl implements OrderService {
             webSocketServer.sendToAllClient(JSONObject.toJSONString(map));
         } else {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
+    }
+
+    /**
+     * 营业额统计
+     *
+     * @param begin
+     * @param end
+     * @return
+     */
+    @Override
+    public TurnoverReportVO turnoverStatistics(LocalDate begin, LocalDate end) {
+        /*// 新建dateList集合
+        List<LocalDate> dateList = new ArrayList<>();
+        // 循环添加到dateList中
+        while (!begin.isAfter(end)) {
+            dateList.add(begin);
+            begin = begin.plusDays(1);
+        }
+        // 创建一个turnoverList集合
+        List<Double> turnoverList = new ArrayList<>();
+        // 循环遍历dateList集合
+        for (LocalDate date : dateList) {
+            // 为date添加时分秒
+            LocalDateTime beginTime = LocalDateTime.of(date, LocalTime.MIN);
+            LocalDateTime endTime = LocalDateTime.of(date, LocalTime.MAX);
+            // 将参数都添加到map中
+            Map map = new HashMap();
+            map.put("endTime", endTime);
+            map.put("beginTime", beginTime);
+            map.put("status", Orders.COMPLETED);
+            Double turnover = orderMapper.sumByMap(map);
+            turnoverList.add(turnover == null ? 0.0 : turnover);
+        }
+        return TurnoverReportVO.builder().dateList(StringUtils.join(dateList, ",")).turnoverList(StringUtils.join(turnoverList, ",")).build();*/
+
+        // 新建dateList集合
+        List<LocalDate> dateList = new ArrayList<>();
+        // 循环添加到dateList中
+        while (!begin.isAfter(end)) {
+            dateList.add(begin);
+            begin = begin.plusDays(1);
+        }
+        Map map = new HashMap();
+        map.put("endTime", LocalDateTime.of(dateList.get(dateList.size() - 1), LocalTime.MAX));
+        map.put("beginTime", LocalDateTime.of(dateList.get(0), LocalTime.MIN));
+        map.put("status", Orders.COMPLETED);
+        // 查询指定日期范围内的所有订单数据
+        List<Orders> ordersList = orderMapper.getOrdersByDateRange(map);
+
+        // 使用 Map 按日期分组
+        Map<LocalDate, List<Orders>> ordersByDateMap = ordersList.stream()
+                .collect(Collectors.groupingBy(order -> order.getOrderTime().toLocalDate()));
+
+        // 创建一个turnoverList集合
+        List<Double> turnoverList = new ArrayList<>();
+
+        // 计算每日营业额
+        for (LocalDate date : dateList) {
+            List<Orders> ordersForDate = ordersByDateMap.getOrDefault(date, new ArrayList<>());
+            Double totalTurnover = ordersForDate.stream()
+                    .mapToDouble(order -> order.getAmount().doubleValue())
+                    .sum();
+            turnoverList.add(totalTurnover);
+        }
+
+        // 构建 TurnoverReportVO
+        return TurnoverReportVO.builder()
+                .dateList(String.join(",", dateList.stream().map(LocalDate::toString).collect(Collectors.toList())))
+                .turnoverList(String.join(",", turnoverList.stream().map(String::valueOf).collect(Collectors.toList())))
+                .build();
+    }
+
+    /**
+     * 用户统计
+     *
+     * @param begin
+     * @param end
+     * @return
+     */
+    @Override
+    public UserReportVO userStatistics(LocalDate begin, LocalDate end) {
+        List<LocalDate> list = new ArrayList<>();
+        while (!begin.isAfter(end)) {
+            list.add(begin);
+            begin = begin.plusDays(1);
+        }
+        // 创建一个map集合,用于查询该时间段内的所有用户
+        Map map = new HashMap();
+        map.put("endTime", LocalDateTime.of(list.get(list.size() - 1), LocalTime.MAX));
+        map.put("beginTime", LocalDateTime.of(list.get(0), LocalTime.MIN));
+        List<User> userList = userMapper.getByMap(map);
+        List<Integer> totalUserList = new ArrayList<>();
+        List<Integer> newUserList = new ArrayList<>();
+        for (LocalDate date : list) {
+            // 获取该日期下新增用户的数量
+            Integer newUsers = userList.stream()
+                    .filter(user -> user.getCreateTime().toLocalDate().equals(date))
+                    .map(User::getId)
+                    .toList()
+                    .size();
+            // 获取该日期下总用户的数量
+            Integer totalUsers = userList.stream()
+                    .filter(user -> user.getCreateTime().toLocalDate().isBefore(date))
+                    .map(User::getId).toList().size();
+            totalUserList.add(totalUsers);
+            newUserList.add(newUsers);
+        }
+        return UserReportVO.builder().dateList(StringUtils.join(list, ",")).newUserList(StringUtils.join(newUserList, ",")).totalUserList(StringUtils.join(totalUserList, ",")).build();
+    }
+
+    /**
+     * 订单统计
+     *
+     * @param begin
+     * @param end
+     * @return
+     */
+    @Override
+    public OrderReportVO ordersStatistics(LocalDate begin, LocalDate end) {
+        List<LocalDate> dateList = new ArrayList<>();
+        // 循环添加到dateList中
+        while (!begin.isAfter(end)) {
+            dateList.add(begin);
+            begin = begin.plusDays(1);
+        }
+        Map map = new HashMap();
+        map.put("endTime", LocalDateTime.of(dateList.get(dateList.size() - 1), LocalTime.MAX));
+        map.put("beginTime", LocalDateTime.of(dateList.get(0), LocalTime.MIN));
+        // 查询指定日期范围内的所有订单数据
+        List<Orders> ordersList = orderMapper.getOrdersByDateRange(map);
+        // 统计每日的订单数量,不考虑订单状态
+        List<Long> orderCountList = dateList.stream().map(date -> {
+            return ordersList.stream()
+                    .filter(order -> order.getOrderTime().toLocalDate().equals(date))
+                    .count();
+        }).toList();
+        // 统计每日的订单数量,只考虑已完成的订单
+        List<Long> validOrderCountList = dateList.stream().map(date -> {
+            return ordersList.stream()
+                    .filter(order -> order.getOrderTime().toLocalDate().equals(date) && order.getStatus().equals(Orders.COMPLETED))
+                    .count();
+        }).toList();
+        // 统计该时间段内的订单总数,不考虑订单状态
+        int totalOrderCount = ordersList.size();
+        // 统计该时间段内的订单总数,只考虑已完成的订单
+        int validOrderCount = ordersList.stream()
+                .filter(order -> order.getStatus().equals(Orders.COMPLETED))
+                .toList().size();
+        Double orderCompletionRate = 0.0;
+        // 订单完成率
+        if (totalOrderCount != 0) {
+            orderCompletionRate = (double) validOrderCount / (double) totalOrderCount;
+        }
+        return OrderReportVO.builder().totalOrderCount(totalOrderCount).validOrderCount(validOrderCount)
+                .orderCompletionRate(orderCompletionRate).dateList(StringUtils.join(dateList, ","))
+                .orderCountList(StringUtils.join(orderCountList, ",")).validOrderCountList(StringUtils.join(validOrderCountList, ",")).build();
+    }
+
+    /**
+     * 销量排名
+     *
+     * @param begin
+     * @param end
+     * @return
+     */
+    @Override
+    public SalesTop10ReportVO getSalesTop10(LocalDate begin, LocalDate end) {
+        Map map = new HashMap();
+        map.put("endTime", LocalDateTime.of(end, LocalTime.MAX));
+        map.put("beginTime", LocalDateTime.of(begin, LocalTime.MIN));
+        map.put("status", Orders.COMPLETED);
+        List<GoodsSalesDTO> salesTop10 = orderMapper.getSalesTop10(map);
+        List<String> names = salesTop10.stream().map(GoodsSalesDTO::getName).toList();
+        List<Integer> numbers = salesTop10.stream().map(GoodsSalesDTO::getNumber).toList();
+        return SalesTop10ReportVO.builder().nameList(StringUtils.join(names, ",")).numberList(StringUtils.join(numbers, ",")).build();
+    }
+
+    @Override
+    public void export(HttpServletResponse response) {
+        // 获取30天前的日期
+        LocalDateTime begin = LocalDateTime.of(LocalDate.now().minusDays(30), LocalTime.MIN);
+        // 获取昨天的日期
+        LocalDateTime end = LocalDateTime.of(LocalDate.now().minusDays(1), LocalTime.MAX);
+        // 获取数据
+        BusinessDataVO businessData = workspaceService.getBusinessData(begin, end);
+        // 获取xlsx模板文件
+        InputStream resourceAsStream = this.getClass().getClassLoader().getResourceAsStream("template/运营数据报表模板.xlsx");
+        // 创建xlsx文件
+        try {
+            XSSFWorkbook excel = new XSSFWorkbook(resourceAsStream);
+            XSSFSheet sheetAt = excel.getSheetAt(0);
+            sheetAt.getRow(1).getCell(1).setCellValue("时间:"+begin.toLocalDate()+"~"+end.toLocalDate());
+
+            XSSFRow row = sheetAt.getRow(3);
+            row.getCell(2).setCellValue(businessData.getTurnover());
+            row.getCell(4).setCellValue(businessData.getOrderCompletionRate());
+            row.getCell(6).setCellValue(businessData.getNewUsers());
+
+            row = sheetAt.getRow(4);
+            row.getCell(2).setCellValue(businessData.getValidOrderCount());
+            row.getCell(4).setCellValue(businessData.getUnitPrice());
+
+            // 填充明细数据
+            for (int i = 0; i < 30; i++) {
+                LocalDate date = begin.toLocalDate().plusDays(i);
+                BusinessDataVO businessData1 = workspaceService.getBusinessData(LocalDateTime.of(date, LocalTime.MIN), LocalDateTime.of(date, LocalTime.MAX));
+                row = sheetAt.getRow(7 + i);
+                row.getCell(1).setCellValue(date.toString());
+                row.getCell(2).setCellValue(businessData1.getTurnover());
+                row.getCell(3).setCellValue(businessData1.getValidOrderCount());
+                row.getCell(4).setCellValue(businessData1.getOrderCompletionRate());
+                row.getCell(5).setCellValue(businessData1.getUnitPrice());
+                row.getCell(6).setCellValue(businessData1.getNewUsers());
+            }
+
+            ServletOutputStream outputStream = response.getOutputStream();
+            excel.write(outputStream);
+
+            outputStream.close();
+            excel.close();
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
